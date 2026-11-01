@@ -1,0 +1,11 @@
+{
+  "name": "lucida/lucida",
+  "description": "Lucida server SDK: capture, batch, identify, local flag evaluation",
+  "type": "library",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/lucidaanalytics/lucida-php",
+  "support": { "issues": "https://github.com/lucidaanalytics/lucida-php/issues", "source": "https://github.com/lucidaanalytics/lucida-php" },
+  "require": { "php": ">=8.1", "ext-curl": "*", "ext-json": "*" },
+  "autoload": { "psr-4": { "Lucida\\": "src/" } },
+  "scripts": { "test": "php tests/run.php" }
+}
