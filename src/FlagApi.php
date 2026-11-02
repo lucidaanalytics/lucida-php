@@ -6,7 +6,7 @@ namespace Lucida;
 /**
  * Flag evaluation for Client: local definitions (re-polled on access when older than flagPollInterval, ETag aware)
  * with a remote /v1/flags fallback for flags the definitions cannot decide, unless onlyEvaluateLocally.
- * A flag result is ['key', 'value', 'payload', 'reason', 'locally_evaluated', 'request_id'].
+ * A flag result is ['key', 'value', 'payload', 'variant', 'reason', 'condition_index', 'locally_evaluated', 'request_id'].
  */
 trait FlagApi
 {
@@ -47,7 +47,11 @@ trait FlagApi
         $this->lastPoll = $this->now();
     }
 
-    /** Full result (value, payload, reason) or null when unknown / undecidable. Records exposure unless $sendExposure is false. */
+    /**
+     * Details: ['key', 'value', 'payload', 'variant', 'reason', 'condition_index', 'locally_evaluated', 'request_id'], or null
+     * when unknown / undecidable and the `fallbacks` option has no value for the key (a fallback has reason "fallback" and
+     * records no exposure). Records exposure unless $sendExposure is false.
+     */
     public function getFeatureFlagResult(
         string $key,
         ?string $distinctId = null,
@@ -62,10 +66,19 @@ trait FlagApi
             return null;
         }
         $r = $this->resolve($key, $id, [$personProperties, $groups, $groupProperties], $onlyEvaluateLocally ?? $this->onlyEvaluateLocally);
+        if ($r === null && array_key_exists($key, $this->fallbacks)) {
+            return self::result($key, $this->fallbacks[$key], null, 'fallback', false, null);
+        }
         if ($r !== null && $sendExposure) {
             $this->expose($id, $r);
         }
         return $r;
+    }
+
+    /** Alias of getFeatureFlagResult(). */
+    public function getFeatureFlagDetails(string $key, ?string $distinctId = null, mixed ...$rest): ?array
+    {
+        return $this->getFeatureFlagResult($key, $distinctId, ...$rest);
     }
 
     /** False, true or a variant key; null when unknown or undecidable. */
@@ -196,7 +209,7 @@ trait FlagApi
         $out = [];
         foreach ($all as $k => $r) {
             if ($r['reason'] !== Evaluator::REQUIRES_SERVER) {
-                $out[$k] = self::result((string) $k, $r['value'], $r['payload'], $r['reason'], true, null);
+                $out[$k] = self::result((string) $k, $r['value'], $r['payload'], $r['reason'], true, null, $r['variant'] ?? null, $r['condition_index'] ?? -1);
             }
         }
         return [$out, count($out) !== count($all)];
@@ -238,14 +251,17 @@ trait FlagApi
         $res = [];
         foreach ((is_array($j) && is_array($j['flags'] ?? null)) ? $j['flags'] : [] as $k => $f) {
             $v = $f['value'] ?? (($f['variant'] ?? null) ?: (bool) ($f['enabled'] ?? false));
-            $res[$k] = self::result((string) $k, $v, $f['payload'] ?? null, $f['reason'] ?? 'remote', false, $j['request_id'] ?? null);
+            $res[$k] = self::result((string) $k, $v, $f['payload'] ?? null, $f['reason'] ?? 'remote', false, $j['request_id'] ?? null, $f['variant'] ?? null, $f['condition_index'] ?? -1);
         }
         return $res;
     }
 
-    private static function result(string $key, mixed $value, mixed $payload, string $reason, bool $local, ?string $requestId): array
+    private static function result(string $key, mixed $value, mixed $payload, string $reason, bool $local, ?string $requestId, mixed $variant = null, int $conditionIndex = -1): array
     {
-        return ['key' => $key, 'value' => $value, 'payload' => $payload, 'reason' => $reason, 'locally_evaluated' => $local, 'request_id' => $requestId];
+        return [
+            'key' => $key, 'value' => $value, 'payload' => $payload, 'variant' => $variant, 'reason' => $reason,
+            'condition_index' => $conditionIndex, 'locally_evaluated' => $local, 'request_id' => $requestId,
+        ];
     }
 
     private function expose(string $distinctId, array $r): void

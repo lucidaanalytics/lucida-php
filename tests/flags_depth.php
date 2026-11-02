@@ -66,3 +66,16 @@ try {
     $threw = true;
 }
 check($threw, 'remote config needs a secret key');
+
+// fallbacks (N-EXP-16)
+$lc = new Client('k', secretKey: 's', testMode: $flags, fallbacks: ['ghost' => 'safe', 'a' => false]);
+$d = $lc->getFeatureFlagDetails('ghost', 'u');
+check($d !== null && $d['value'] === 'safe' && $d['reason'] === 'fallback', 'missing flag serves the fallback');
+$d = $lc->getFeatureFlagDetails('a', 'u');
+check($d['value'] === true && $d['reason'] === 'condition_match' && $d['condition_index'] === 0, 'served flag keeps its real reason');
+check($lc->getFeatureFlag('nope', 'u') === null, 'no fallback keeps the old behaviour');
+$lc->sink->clear();
+$lc->getFeatureFlag('ghost', 'u');
+check($lc->sink->events === [], 'fallback records no exposure');
+$lc = new Client('k', flagPollInterval: 0, fallbacks: ['x' => 'down'], transport: fn () => 503, sleeper: function (): void {});
+check($lc->getFeatureFlagDetails('x', 'u')['reason'] === 'fallback', 'network failure serves the fallback');

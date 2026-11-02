@@ -55,6 +55,13 @@ static, which is safe under PHP-FPM). The tracing headers are client-controlled 
   (`['flags' =>, 'payloads' =>]`) and `getFeatureFlagResult` (`value`, `payload`, `reason`, `locally_evaluated`,
   `request_id`). Single-flag calls record `$feature_flag_called` and `$exposure` once per user, flag and value (per process).
 
+### Fallbacks and details
+
+`new Client('k', fallbacks: ['new-nav' => false, 'plan' => 'free'])`: when a read fails (network error, no definitions,
+quota limit, unknown flag) and the key is listed, the flag returns that value with reason `fallback` and records no
+exposure. `getFeatureFlagDetails($key, $id)` (same as `getFeatureFlagResult`) returns `value`, `payload`, `variant`,
+`reason`, `condition_index`, `request_id` and `locally_evaluated`.
+
 ## Test mode
 
 ```php

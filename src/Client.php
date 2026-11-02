@@ -47,6 +47,7 @@ final class Client
      * @param array|string|null $testMode fixture (path, ['flags' => [...]] or a list of definitions): offline, events go to $sink
      * @param (callable(float, ?float): void)|null $sleeper fn(backoffSeconds, retryAfter) overrides the retry sleep (tests)
      * @param (callable(): float)|null $clock overrides microtime(true) (tests)
+     * @param array<string, bool|string> $fallbacks flag key => value served (reason "fallback", no exposure) when evaluation fails
      */
     public function __construct(
         private readonly string $apiKey,
@@ -71,6 +72,7 @@ final class Client
         ?callable $clock = null,
         private readonly ?array $appContexts = null,
         private readonly ?FlagDefinitionCacheProvider $flagDefinitionCache = null,
+        private readonly array $fallbacks = [],
     ) {
         $this->transport = $transport ?? [$this, 'curlRequest'];
         $this->sleeper = $sleeper ?? self::sleep(...);
