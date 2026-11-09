@@ -51,7 +51,7 @@ final class Client
      */
     public function __construct(
         private readonly string $apiKey,
-        private readonly string $host = 'https://app.lucida.dev',
+        private readonly string $host = 'https://capture.lucidace.com',
         private readonly ?string $secretKey = null,
         private readonly int $flushAt = 20,
         private readonly int $maxQueueSize = 1000,

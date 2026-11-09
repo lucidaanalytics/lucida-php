@@ -3,8 +3,20 @@
 Server SDK for Lucida (PHP >= 8.1, ext-curl, ext-json). Pass a distinct id on every call, or set one for the request
 with `Client::withContext()`.
 
+## Install
+
+From GitHub, [lucidaanalytics/lucida-php](https://github.com/lucidaanalytics/lucida-php), release `v0.1.0`:
+
+```sh
+composer config repositories.lucida vcs https://github.com/lucidaanalytics/lucida-php
+composer require "lucida/lucida:^0.1"
+```
+
+That is the same as `"repositories": [{"type": "vcs", "url": "https://github.com/lucidaanalytics/lucida-php"}]` in `composer.json`. The Packagist install (`composer require lucida/lucida` with no repository entry) is coming.
+
+
 ```php
-$lc = new Lucida\Client('lc_pk_...', host: 'https://app.lucida.dev', secretKey: 'lc_sk_...');
+$lc = new Lucida\Client('lc_pk_...', host: 'https://capture.lucidace.com', secretKey: 'lc_sk_...');
 $lc->capture('u1', 'purchase', ['total' => 12], groups: ['company' => 'acme']);
 $lc->identify('u1', ['plan' => 'pro']);
 $lc->alias('u1', 'anon-9');
