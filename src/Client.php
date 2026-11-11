@@ -13,7 +13,7 @@ final class Client
     use FlagApi;
     use Identity;
 
-    public const VERSION = '0.1.0';
+    public const VERSION = '0.1.1';
     public const LIB = 'lucida-php';
 
     public int $droppedEvents = 0;
@@ -141,10 +141,11 @@ final class Client
 
     public function identify(?string $distinctId, ?array $properties = null, ?array $propertiesSetOnce = null): void
     {
-        if (!$this->firstIdentity('identify', $distinctId, $properties, $propertiesSetOnce)) {
+        $uuid = $this->identityUuid('identify', $distinctId, $properties, $propertiesSetOnce);
+        if ($uuid === null) {
             return;
         }
-        $this->capture($distinctId, '$identify', set: $properties, setOnce: $propertiesSetOnce);
+        $this->capture($distinctId, '$identify', uuid: $uuid, set: $properties, setOnce: $propertiesSetOnce);
     }
 
     public function alias(string $distinctId, string $alias): void
@@ -154,12 +155,13 @@ final class Client
 
     public function groupIdentify(string $groupType, string $groupKey, array $properties = [], ?string $distinctId = null): void
     {
-        if (!$this->firstIdentity('group', $groupType, $groupKey, $distinctId, $properties)) {
+        $uuid = $this->identityUuid('group', $groupType, $groupKey, $distinctId, $properties);
+        if ($uuid === null) {
             return;
         }
         $this->capture($distinctId ?? "\${$groupType}_{$groupKey}", '$groupidentify', [
             '$group_type' => $groupType, '$group_key' => $groupKey, '$group_set' => (object) $properties,
-        ]);
+        ], uuid: $uuid);
     }
 
     // Request context -----------------------------------------------------------------------

@@ -32,10 +32,13 @@ trait Delivery
     /**
      * Historical import via POST /v1/s2s/batch (secret key, caller timestamps kept), chunks of 1000.
      *
+     * Default properties and beforeSend apply (an event beforeSend drops is not sent); `$raw = true` sends the
+     * events as given.
+     *
      * @param array[] $events each with distinct_id, event and optional properties/timestamp/uuid/set/set_once
      * @throws LucidaException on a rejected chunk or a missing secret key
      */
-    public function importEvents(array $events): int
+    public function importEvents(array $events, bool $raw = false): int
     {
         if ($this->secretKey === null) {
             throw new LucidaException('importEvents requires a secret key');
@@ -43,10 +46,17 @@ trait Delivery
         if ($this->disabled) {
             return 0;
         }
-        $wire = array_map(fn (array $e): array => $this->buildEvent(
-            $e['distinct_id'], $e['event'], $e['properties'] ?? [], null, $e['timestamp'] ?? null, $e['uuid'] ?? null,
-            $e['set'] ?? null, $e['set_once'] ?? null,
-        ), $events);
+        $wire = [];
+        foreach ($events as $e) {
+            $w = $this->buildEvent(
+                $e['distinct_id'], $e['event'], $raw ? ($e['properties'] ?? []) : ($e['properties'] ?? []) + $this->superProps,
+                null, $e['timestamp'] ?? null, $e['uuid'] ?? null, $e['set'] ?? null, $e['set_once'] ?? null,
+            );
+            $w = $raw ? $w : $this->applyBeforeSend($w);
+            if ($w !== null) {
+                $wire[] = $w;
+            }
+        }
         if ($this->sink !== null) {
             array_map([$this->sink, 'add'], $wire);
             return count($wire);
@@ -62,24 +72,32 @@ trait Delivery
         return $sent;
     }
 
+    /** The event after the beforeSend hook; null when the hook drops it, the original when the hook throws. */
+    private function applyBeforeSend(array $e): ?array
+    {
+        if ($this->beforeSend === null) {
+            return $e;
+        }
+        try {
+            return ($this->beforeSend)($e);
+        } catch (\Throwable $err) {
+            $this->log('beforeSend threw: ' . $err->getMessage());
+            return $e;
+        }
+    }
+
     private function enqueue(array $e): void
     {
-        if ($this->beforeSend !== null) {
-            try {
-                $e = ($this->beforeSend)($e);
-            } catch (\Throwable $err) {
-                $this->log('beforeSend threw: ' . $err->getMessage()); // keep the original event
-            }
-            if ($e === null) {
-                return;
-            }
+        $e = $this->applyBeforeSend($e);
+        if ($e === null) {
+            return;
         }
         if ($this->sink !== null) {
             $this->sink->add($e);
             return;
         }
         if (count($this->queue) >= $this->maxQueueSize) {
-            array_shift($this->queue);
+            $this->releaseIdentities([array_shift($this->queue)]);
             $this->droppedEvents++;
         }
         $this->queue[] = $e;
@@ -96,6 +114,9 @@ trait Delivery
             return true;
         }
         $later = self::retryable($status);
+        if (!$later) {
+            $this->releaseIdentities($batch);
+        }
         $this->report(new LucidaException(sprintf('batch of %d events %s: status %d', count($batch), $later ? 'kept for next flush' : 'dropped', $status), $status));
         return !$later;
     }

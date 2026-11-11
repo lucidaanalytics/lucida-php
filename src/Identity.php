@@ -12,6 +12,8 @@ trait Identity
     private array $superProps = [];
     /** @var array<string, true> insertion-ordered LRU of sent identify/group calls */
     private array $identities = [];
+    /** @var array<string, string> event uuid => dedupe key, until the event is dropped */
+    private array $identityKeys = [];
 
     /** Adds properties to every later event; context and per-call properties win. */
     public function register(array $properties): void
@@ -36,8 +38,11 @@ trait Identity
         $this->capture($distinctId, '$set', setOnce: $properties);
     }
 
-    /** True the first time this exact call (kind, id, properties) is seen by the client; bounded LRU. */
-    private function firstIdentity(mixed ...$parts): bool
+    /**
+     * The uuid to send an identify/group event under the first time this exact call (kind, id, properties) is seen
+     * by the client (bounded LRU), else null. releaseIdentities() frees it again when the event is dropped.
+     */
+    private function identityUuid(mixed ...$parts): ?string
     {
         $key = hash('sha256', json_encode($parts, JSON_PARTIAL_OUTPUT_ON_ERROR) ?: '');
         $fresh = !isset($this->identities[$key]);
@@ -46,6 +51,25 @@ trait Identity
         if (count($this->identities) > self::IDENTITY_DEDUPE_SIZE) {
             unset($this->identities[array_key_first($this->identities)]);
         }
-        return $fresh;
+        if (!$fresh) {
+            return null;
+        }
+        $uuid = self::uuid7();
+        $this->identityKeys[$uuid] = $key;
+        if (count($this->identityKeys) > self::IDENTITY_DEDUPE_SIZE) {
+            unset($this->identityKeys[array_key_first($this->identityKeys)]);
+        }
+        return $uuid;
+    }
+
+    /** Forgets the calls whose events were dropped (rejected batch, full queue) so repeating them is sent again. */
+    private function releaseIdentities(array $events): void
+    {
+        foreach ($events as $e) {
+            $uuid = $e['uuid'] ?? '';
+            if (isset($this->identityKeys[$uuid])) {
+                unset($this->identities[$this->identityKeys[$uuid]], $this->identityKeys[$uuid]);
+            }
+        }
     }
 }
